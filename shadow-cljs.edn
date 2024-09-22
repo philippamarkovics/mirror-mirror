@@ -1,0 +1,14 @@
+{:source-paths ["src"]
+ :dependencies [[reagent "1.2.0"]
+                [applied-science/js-interop "0.4.2"]]
+ :dev-http {7890 "resources/public"}
+ :builds {:dev {:target :browser
+                :output-dir "resources/public/out"
+                :asset-path "/out"
+                :modules {:main {:entries [mirror-mirror]}}
+                :js-options {:resolve {"react" {:export-globals ["React"]}
+                                       "react-dom" {:export-globals ["ReactDOM"]}
+                                       "js-utils" {:target :file :file "utils/js_utils.js"}}}
+                :devtools {:repl-pprint true
+                           :watch-dir "resources/public"
+                           :use-document-host false}}}}

@@ -3,7 +3,9 @@
    where every glance reveals not what is,
    but what could be."
   (:require ["fabric" :as fabric]
+            ["geometric" :as geometric]
             ["js-utils" :as jsu]
+            ["points-on-curve" :refer [pointsOnBezierCurves]]
             ["points-on-path" :refer [pointsOnPath]]
             ["react-dom/client" :as react-client]
             [applied-science.js-interop :as j]
@@ -26,17 +28,6 @@
           (first ps)
           ps))
 
-(defn rotate [[origin-x origin-y] [x y] deg]
-  (let [phi (* deg (/ Math/PI 180))
-        cos (Math/cos phi)
-        sin (Math/sin phi)]
-    [(+ (* cos (- x origin-x))
-        (* sin (- y origin-y))
-        origin-x)
-     (+ (- (* cos (- y origin-y))
-           (* sin (- x origin-x)))
-        origin-y)]))
-
 (defn circ-path-str [[cx cy] r]
   (str "M " (- cx r) "," (+ cy r) " a " r "," r " 0 1,0 " (* r 2) ",0 a " r "," r " 0 1,0 " (* r -2) ",0"))
 
@@ -46,16 +37,19 @@
 (defn quad-path-str [[ax ay] [qx qy] [bx by]]
   (str "M " ax "," ay " Q " qx "," qy " "  bx "," by))
 
+(defn cubic-path-str [[ax ay] [c1x c1y] [c2x c2y] [bx by]]
+  (str "M " ax "," ay " C " c1x "," c1y " " c2x "," c2y " "  bx "," by))
+
 (defn line-points [[ax ay] [bx by]]
-  (clj->js
-   (if (= ax bx)
-     (mapv (fn [y] [ax y]) (range ay by))
-     (let [dx (- bx ax)
-           dy (- by ay)
-           m (/ dy dx)]
-       (mapv
-        (fn [x] [x (+ (* m (- x ax)) ay)])
-        (range (min ax bx) (max ax bx)))))))
+  (let [dx (Math/abs (- bx ax))
+        dy (Math/abs (- by ay))
+        interpolate (geometric/lineInterpolate [[ax ay] [bx by]])
+        steps (cond
+                (or (= ax bx) (< dx dy)) dy
+                (or (= ay by) (< dy dx)) dx)]
+    (->> (range steps)
+         (map #(+ 0 (* % (/ 1 (dec steps)))))
+         (map #(interpolate %)))))
 
 (defn slope [[ax ay] [bx by]]
   (if (= ax bx) :vertical (/ (- by ay) (- bx by))))
@@ -93,7 +87,7 @@
   (let [mirror-points (transformed-points mirror "mirror")
         mirrored-points (clj->js (mapv
                                   (fn [p]
-                                    (rotate (closest-point mirror-points p) p 180))
+                                    (geometric/pointRotate p 180 (closest-point mirror-points p)))
                                   (transformed-points subj nil)))
         mirrored (fabric/Path. (->path-str mirrored-points)
                                #js{:stroke "rgba(205,253,240,0.5)"
@@ -137,11 +131,11 @@
         subj (fabric/Path. (circ-path-str [300 (- (/ js/innerHeight 2) 100)] 50)
                            #js {:stroke "#72DEC2"
                                 :strokeWidth 2})
-        #_#_mirror (line-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
-                                [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])
-        mirror (quad-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
-                            [(+ 200 150 100) (- (/ js/innerHeight 2) 50)]
-                            [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])]
+        mirror (line-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
+                            [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])
+        #_#_mirror (quad-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
+                                [(+ 200 150 100) (- (/ js/innerHeight 2) 50)]
+                                [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])]
     (.add canvas subj)
     (.add canvas mirror)
     (.set subj control-styles)

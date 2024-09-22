@@ -8,6 +8,8 @@
   "dependencies": {
     "fabric": "^6.4.2",
     "fabricjs-react": "^2.0.0",
+    "geometric": "^2.5.4",
+    "points-on-curve": "^1.0.1",
     "points-on-path": "^0.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",

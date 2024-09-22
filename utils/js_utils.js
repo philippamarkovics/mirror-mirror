@@ -1,3 +1,10 @@
+import { Bezier } from "bezier-js";
+
+
+export function makeBezier(points) {
+  return new Bezier(...points);
+}
+
 const average = (a, b) => (a + b) / 2
 
 export function getSvgPathFromStroke(points, closed = true) {

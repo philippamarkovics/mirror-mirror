@@ -2,10 +2,10 @@
   "Some say mirrors are windows into parallel worlds,
    where every glance reveals not what is,
    but what could be."
-  (:require ["fabric" :as fabric]
+  (:require ["bezier-js" :refer [Bezier]]
+            ["fabric" :as fabric]
             ["geometric" :as geometric]
             ["js-utils" :as jsu]
-            ["points-on-curve" :refer [pointsOnBezierCurves]]
             ["points-on-path" :refer [pointsOnPath]]
             ["react-dom/client" :as react-client]
             [applied-science.js-interop :as j]
@@ -37,31 +37,32 @@
 (defn quad-path-str [[ax ay] [qx qy] [bx by]]
   (str "M " ax "," ay " Q " qx "," qy " "  bx "," by))
 
-(defn cubic-path-str [[ax ay] [c1x c1y] [c2x c2y] [bx by]]
-  (str "M " ax "," ay " C " c1x "," c1y " " c2x "," c2y " "  bx "," by))
+(defn cubic-path-str [cs]
+  (let [[ax ay] (first cs)]
+    (str "M " ax "," ay " C "
+         (reduce (fn [s [cx cy]]
+                   (str s cx "," cy " "))
+                 ""
+                 (rest cs)))))
+
+(defn ts [length]
+  (mapv #(+ 0 (* % (/ 1 (dec length)))) (range length)))
 
 (defn line-points [[ax ay] [bx by]]
   (let [dx (Math/abs (- bx ax))
         dy (Math/abs (- by ay))
-        interpolate (geometric/lineInterpolate [[ax ay] [bx by]])
-        steps (cond
+        interpolate (geometric/lineInterpolate [[ax ay] [bx by]])]
+    (mapv interpolate
+          (ts (cond
                 (or (= ax bx) (< dx dy)) dy
-                (or (= ay by) (< dy dx)) dx)]
-    (->> (range steps)
-         (map #(+ 0 (* % (/ 1 (dec steps)))))
-         (map #(interpolate %)))))
+                (or (= ay by) (< dy dx)) dx)))))
 
-(defn slope [[ax ay] [bx by]]
-  (if (= ax bx) :vertical (/ (- by ay) (- bx by))))
-
-(defn straight-line? [points]
-  (apply = (map slope points (rest points))))
-
-(defn ->points [path-str]
-  (let [points (first (pointsOnPath path-str))]
-    (if (straight-line? points)
-      (line-points (first points) (last points))
-      points)))
+(defn bezier-points [ps]
+  (let [bezier (jsu/makeBezier ps)]
+    (mapv (fn [t]
+            (let [point (.get bezier t)]
+              [(.-x point) (.-y point)]))
+          (ts (.length bezier)))))
 
 (defn ->path-str
   ([points]
@@ -69,13 +70,24 @@
   ([points closed?]
    (jsu/getSvgPathFromStroke points closed?)))
 
-(defn path-segments->path-str [ops]
-  (reduce (fn [acc op] (str acc " " (str/join " " op))) "" ops))
+(defn transformed-path [^js path-obj]
+  (fabric/util.transformPath (.-path path-obj)
+                             (.calcTransformMatrix path-obj)
+                             (.-pathOffset path-obj)))
 
-(defn transformed-points [^js path-obj debug]
-  (->points (path-segments->path-str (fabric/util.transformPath (.-path path-obj)
-                                                                (.calcTransformMatrix path-obj)
-                                                                (.-pathOffset path-obj)))))
+(defn ->path-points [^js path-obj]
+  (->> path-obj
+       transformed-path
+       (reduce (fn [acc op] (str acc " " (str/join " " op))) "" )
+       pointsOnPath
+       first))
+
+(defn ->mirror-points [^js path-obj]
+  (let [ps (mapcat (fn [segment] (rest segment)) (transformed-path path-obj))]
+    (clj->js
+     (if (= (count ps) 4) ;; a straight line made of two points
+       (apply line-points (partition 2 ps))
+       (bezier-points ps)))))
 
 (defn make-mirror-object!
   "The silvered glass hums with an ancient magic, bending light and reality to its will.
@@ -84,11 +96,11 @@
   [canvas ^js subj ^js mirror]
   (when @!mirrored
     (.remove canvas @!mirrored))
-  (let [mirror-points (transformed-points mirror "mirror")
+  (let [mirror-points (->mirror-points mirror)
         mirrored-points (clj->js (mapv
                                   (fn [p]
                                     (geometric/pointRotate p 180 (closest-point mirror-points p)))
-                                  (transformed-points subj nil)))
+                                  (->path-points subj)))
         mirrored (fabric/Path. (->path-str mirrored-points)
                                #js{:stroke "rgba(205,253,240,0.5)"
                                    :strokeWidth 1
@@ -125,17 +137,26 @@
     (.set path "controls" (fabric/controlsUtils.createPathControls path))
     path))
 
+(defn cubic-mirror [& ps]
+  (let [path (mirror-path (cubic-path-str ps))]
+    (.set path "controls" (fabric/controlsUtils.createPathControls path))
+    path))
+
 (defn make-fabric! [el]
   (let [canvas (fabric/Canvas. el #js {:width js/innerWidth
                                        :height js/innerHeight})
         subj (fabric/Path. (circ-path-str [300 (- (/ js/innerHeight 2) 100)] 50)
                            #js {:stroke "#72DEC2"
                                 :strokeWidth 2})
-        mirror (line-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
+        #_#_mirror (line-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
+                                [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])
+        mirror (quad-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
+                            [(+ 200 150 100) (- (/ js/innerHeight 2) 50)]
                             [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])
-        #_#_mirror (quad-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
-                                [(+ 200 150 100) (- (/ js/innerHeight 2) 50)]
-                                [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])]
+        #_#_mirror (cubic-mirror [(+ 200 150 100) (- (/ js/innerHeight 2) 200)]
+                                 [(+ 200 150 100) (- (/ js/innerHeight 2) 100)]
+                                 [(+ 200 150 100) (+ (/ js/innerHeight 2) 0)]
+                                 [(+ 200 150 100) (+ (/ js/innerHeight 2) 100)])]
     (.add canvas subj)
     (.add canvas mirror)
     (.set subj control-styles)

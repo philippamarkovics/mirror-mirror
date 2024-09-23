@@ -6,11 +6,15 @@
             ["fabric" :as fabric]
             ["geometric" :as geometric]
             ["js-utils" :as jsu]
+            ["paper" :as paper]
             ["points-on-path" :refer [pointsOnPath]]
             ["react-dom/client" :as react-client]
             [applied-science.js-interop :as j]
             [clojure.string :as str]
             [reagent.core :as r]))
+
+(paper/setup (paper/Size. 1 1))
+(j/assoc-in! paper [:view :autoUpdate] false)
 
 (def !object-selected? (atom false))
 (def !mouse-down? (atom false))
@@ -121,18 +125,24 @@
   []
   (doseq [m @!mirrored]
     (.remove @!canvas m))
-  (let [mirrored (map (fn [mirror]
-                        (fabric/Path. (->path-str (make-mirrored @!subj mirror))
-                                      #js{:hasControls false
-                                          :stroke "rgba(205,253,240,0.5)"
-                                          :strokeWidth 1
-                                          :shadow (fabric/Shadow. #js {:color "#72DEC2"
-                                                                       :blur 30
-                                                                       :offsetX 0
-                                                                       :offsetY 0})}))
-                      @!mirrors)]
-    (add-to-canvas! mirrored)
-    (reset! !mirrored mirrored)))
+  (let [mirrored-paths (map #(paper/Path. (->path-str (make-mirrored @!subj %))) @!mirrors)
+        union-paths (->> (rest mirrored-paths)
+                         (reduce (fn [acc ^js path]
+                                   (if (.intersects (last acc) path)
+                                     (vec (concat (drop-last acc) [(.unite (last acc) path)]))
+                                     (conj acc path)))
+                                 [(first mirrored-paths)])
+                         (map (fn [^js path]
+                                (fabric/Path. (.-pathData path)
+                                              #js{:hasControls false
+                                                  :stroke "rgba(205,253,240,0.5)"
+                                                  :strokeWidth 1
+                                                  :shadow (fabric/Shadow. #js {:color "#72DEC2"
+                                                                               :blur 30
+                                                                               :offsetX 0
+                                                                               :offsetY 0})}))))]
+    (add-to-canvas! union-paths)
+    (reset! !mirrored union-paths)))
 
 (defn mirror-path [path-str]
   (fabric/Path. path-str

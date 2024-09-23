@@ -144,21 +144,21 @@
 (def center-x (/ js/innerWidth 2))
 (def center-y (/ js/innerHeight 2))
 
+(defn add-mirror! [path]
+  (add-to-canvas! [path])
+  (swap! !mirrors conj path)
+  (make-mirror-objects!))
+
 (defn add-line-mirror! []
-  (let [path (mirror-path (line-path-str [center-x (- center-y 150)]
-                                         [center-x (+ center-y 150)]))]
-    (add-to-canvas! [path])
-    (swap! !mirrors conj path)
-    (make-mirror-objects!)))
+  (add-mirror! (mirror-path (line-path-str [center-x (- center-y 150)]
+                                           [center-x (+ center-y 150)]))))
 
 (defn add-quad-mirror! []
   (let [path (mirror-path (quad-path-str [center-x (- center-y 150)]
                                          [center-x center-y]
                                          [center-x (+ center-y 150)]))]
     (.set path "controls" (fabric/controlsUtils.createPathControls path))
-    (add-to-canvas! [path])
-    (swap! !mirrors conj path)
-    (make-mirror-objects!)))
+    (add-mirror! path)))
 
 (defn add-cubic-mirror! []
   (let [path (mirror-path (cubic-path-str [[center-x (- center-y 150)]
@@ -166,9 +166,7 @@
                                            [center-x (+ center-y 75)]
                                            [center-x (+ center-y 150)]]))]
     (.set path "controls" (fabric/controlsUtils.createPathControls path))
-    (add-to-canvas! [path])
-    (swap! !mirrors conj path)
-    (make-mirror-objects!)))
+    (add-mirror! path)))
 
 (defn make-fabric! [el]
   (let [canvas (fabric/Canvas. el #js {:width js/innerWidth
@@ -200,8 +198,7 @@
        [:path {:fill "currentColor" :d "m10.523 33.347c-.912 0-1.344.575-1.344 1.197 0 .623.432 1.245 1.344 1.245 9.552 0 19.194-4.218 19.194-15.309 0-10.418-8.49-14.926-17.946-15.309h-1.248c-.96 0-1.392.622-1.392 1.197s.432 1.197 1.392 1.197c1.248 0 .816.048 1.248.048 8.784.336 15.6 4.417 15.6 12.867 0 9.698-8.736 12.867-16.848 12.867z"}]]]
      [:button {:class button-class :on-click add-cubic-mirror!}
       [:svg {:viewBox "-20 -7.5 60 40" :xmlns "http://www.w3.org/2000/svg"}
-       [:path {:fill "currentColor" :d "m12.006 32.045c3.025 0 5.041-1.867 6.866-4.795 2.4-3.841 2.688-7.923 5.329-11.476 1.296-1.729 2.208-2.593 3.936-2.593 6.386 0 7.682 10.564 7.682 15.222v1.679c0 .862.622 1.245 1.197 1.245s1.197-.383 1.197-1.245v-1.535c0-5.859-1.58-17.76-10.076-17.76-3.072 0-4.993 2.155-6.529 4.651-2.352 3.841-2.64 7.971-5.233 11.524-1.248 1.681-2.544 2.689-4.369 2.689-6.769 0-7.825-12.821-7.825-16.997 0-.862-.622-1.292-1.197-1.292s-1.197.43-1.197 1.292c0 5.665 1.389 19.391 10.219 19.391z"}]]]])
-  )
+       [:path {:fill "currentColor" :d "m12.006 32.045c3.025 0 5.041-1.867 6.866-4.795 2.4-3.841 2.688-7.923 5.329-11.476 1.296-1.729 2.208-2.593 3.936-2.593 6.386 0 7.682 10.564 7.682 15.222v1.679c0 .862.622 1.245 1.197 1.245s1.197-.383 1.197-1.245v-1.535c0-5.859-1.58-17.76-10.076-17.76-3.072 0-4.993 2.155-6.529 4.651-2.352 3.841-2.64 7.971-5.233 11.524-1.248 1.681-2.544 2.689-4.369 2.689-6.769 0-7.825-12.821-7.825-16.997 0-.862-.622-1.292-1.197-1.292s-1.197.43-1.197 1.292c0 5.665 1.389 19.391 10.219 19.391z"}]]]]))
 
 (defn world []
   (r/with-let [ref-fn #(when % (make-fabric! %))]

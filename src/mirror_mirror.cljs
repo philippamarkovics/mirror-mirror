@@ -22,6 +22,10 @@
 (def !subj (atom nil))
 (def !mirrors (atom []))
 (def !mirrored (atom []))
+(def !inside-mirror? (r/atom []))
+
+(def center-x (/ js/innerWidth 2))
+(def center-y (/ js/innerHeight 2))
 
 (def control-styles
   #js {:hasBorders false
@@ -97,10 +101,14 @@
                              (.calcTransformMatrix path-obj)
                              (.-pathOffset path-obj)))
 
-(defn ->path-points [^js path-obj]
+(defn transformed-path-str [^js path-obj]
   (->> path-obj
        transformed-path
-       (reduce (fn [acc op] (str acc " " (str/join " " op))) "" )
+       (reduce (fn [acc op] (str acc " " (str/join " " op))) "" )))
+
+(defn ->path-points [^js path-obj]
+  (->> path-obj
+       transformed-path-str
        pointsOnPath
        first))
 
@@ -134,9 +142,10 @@
                                  [(first mirrored-paths)])
                          (map (fn [^js path]
                                 (fabric/Path. (.-pathData path)
-                                              #js{:hasControls false
+                                              #js{:selectable false
                                                   :stroke "rgba(205,253,240,0.5)"
                                                   :strokeWidth 1
+                                                  :moveCursor "none"
                                                   :shadow (fabric/Shadow. #js {:color "#72DEC2"
                                                                                :blur 30
                                                                                :offsetX 0
@@ -146,13 +155,12 @@
 
 (defn mirror-path [path-str]
   (fabric/Path. path-str
-                #js {:stroke "white"
+                #js {:hoverCursor "default"
+                     :moveCursor "default"
+                     :stroke "white"
                      :strokeWidth 1
                      :fill false
                      :strokeDashArray [0 2 0]}))
-
-(def center-x (/ js/innerWidth 2))
-(def center-y (/ js/innerHeight 2))
 
 (defn add-mirror! [path]
   (add-to-canvas! [path])
@@ -178,6 +186,14 @@
     (.set path "controls" (fabric/controlsUtils.createPathControls path))
     (add-mirror! path)))
 
+(defn show-mirror-cursor! []
+  (reset! !inside-mirror? true)
+  (.. js/document -body -classList (add "inside-mirror")))
+
+(defn hide-mirror-cursor! []
+  (reset! !inside-mirror? false)
+  (.. js/document -body -classList (remove "inside-mirror")))
+
 (defn make-fabric! [el]
   (let [canvas (fabric/Canvas. el #js {:width js/innerWidth
                                        :height js/innerHeight})
@@ -191,14 +207,26 @@
     (.on canvas "selection:cleared" #(reset! !object-selected? false))
     (.on canvas "mouse:down" #(reset! !mouse-down? true))
     (.on canvas "mouse:up" #(reset! !mouse-down? false))
-    (.on canvas "mouse:move" #(when (and @!object-selected? @!mouse-down? (seq @!mirrors))
-                                (make-mirror-objects!)))
+    (.on canvas "mouse:move" (fn [opts]
+                               (if-let [m (first @!mirrors)]
+                                 (let [p (.getPointer @!canvas (.-e opts))
+                                       subj-center (.-center (.-bounds (paper/Path. (transformed-path-str @!subj))))
+                                       inside-mirror? (.intersects (paper/Path. (line-path-str [(.-x subj-center) (.-y subj-center)]
+                                                                                               [(.-x p) (.-y p)]))
+                                                                   (paper/Path. (transformed-path-str m)))]
+                                   (if inside-mirror?
+                                     (when (not= @!inside-mirror? inside-mirror?)
+                                       (show-mirror-cursor!))
+                                     (hide-mirror-cursor!)))
+                                 (hide-mirror-cursor!))
+                               (when (and @!object-selected? @!mouse-down? (seq @!mirrors))
+                                 (make-mirror-objects!))))
     (.set canvas #js {:selectionColor "rgba(114,222,194,0.3)"
                       :selectionBorderColor "rgba(114,222,194,0.8)"
                       :selectionLineWidth 1})))
 
 (defn menu []
-  (let [button-class ["w-[30px]" "h-[30px]" "opacity-70" "hover:opacity-100" "text-[#72DEC2]" "transition-all" "hover:scale-110"]]
+  (let [button-class ["w-[30px]" "h-[30px]" "opacity-70" "hover:opacity-100" "text-[#72DEC2]" "transtion-all" "hover:scale-110"]]
     [:div.flex.items-center.gap-1.fixed.top-7.left-7
      [:button {:class button-class :on-click add-line-mirror!}
       [:svg {:viewBox "-20 -7.5 60 40" :xmlns "http://www.w3.org/2000/svg"}
@@ -213,7 +241,7 @@
 (defn world []
   (r/with-let [ref-fn #(when % (make-fabric! %))]
     [:div.bg-black
-     [:canvas.w-screen.h-screen.block
+     [:canvas#canvas.w-screen.h-screen.block
       {:ref ref-fn}]
      [menu]]))
 
